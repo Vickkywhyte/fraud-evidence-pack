@@ -125,10 +125,24 @@ const warningPhrases: string[] = [
   'customs',
 ]
 
-const datePattern =
+const DATE_PATTERN =
   /\b(\d{1,2}[\/.\\-]\d{1,2}[\/.\\-]\d{2,4}|\d{4}[\/.\\-]\d{1,2}[\/.\\-]\d{1,2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{2,4})?|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:,?\s+\d{2,4})?)\b/gi
 
-export function analyzeTier1(text: string): Tier1Result {
+export function extractTimeline(text: string): { date: string; context: string }[] {
+  const timeline: { date: string; context: string }[] = []
+  for (const match of text.matchAll(DATE_PATTERN)) {
+    const start = Math.max(0, match.index - 40)
+    const end = Math.min(text.length, match.index + match[0].length + 40)
+    const context = text.slice(start, end).replace(/\n/g, ' ').trim()
+    timeline.push({ date: match[0], context })
+  }
+  return timeline
+}
+
+export function analyzeTier1(
+  text: string,
+  timeline?: { date: string; context: string }[],
+): Tier1Result {
   const lower = text.toLowerCase()
 
   const matchedTypologies = typologies
@@ -139,14 +153,9 @@ export function analyzeTier1(text: string): Tier1Result {
     lower.includes(phrase),
   )
 
-  const timeline: { date: string; context: string }[] = []
-  let match: RegExpExecArray | null
-  while ((match = datePattern.exec(text)) !== null) {
-    const start = Math.max(0, match.index - 40)
-    const end = Math.min(text.length, match.index + match[0].length + 40)
-    const context = text.slice(start, end).replace(/\n/g, ' ').trim()
-    timeline.push({ date: match[0], context })
+  return {
+    matchedTypologies,
+    extractedFlags,
+    timeline: timeline ?? extractTimeline(text),
   }
-
-  return { matchedTypologies, extractedFlags, timeline }
 }

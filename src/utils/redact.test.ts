@@ -61,6 +61,21 @@ describe('redactPII', () => {
     )
   })
 
+  it('does not redact years or short digit sequences as phone numbers', () => {
+    const input = 'The year 2026 was significant. Order #4821 confirmed.'
+    expect(redactPII(input)).toBe(input)
+  })
+
+  it('handles WhatsApp-style timestamp lines without hanging', () => {
+    const input =
+      '[12/10/2026, 09:14:02] +44 7700 900077: URGENT: Send it to IBAN GB29NWBK60161331926819.'
+    const result = redactPII(input)
+    expect(result).toContain('[REDACTED]')
+    expect(result).not.toContain('GB29')
+    expect(result).not.toContain('900077')
+    expect(result).toContain('12/10/2026')
+  })
+
   it('leaves clean text untouched', () => {
     const input = 'This is a normal sentence with no PII.'
     expect(redactPII(input)).toBe(input)

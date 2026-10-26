@@ -8,8 +8,8 @@ const patterns: RegExp[] = [
   // Email
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
 
-  // Phone: optional +, country code, then 7–14 digits with optional spaces/dashes/dots/parens
-  /\+?\(?\d{1,4}\)?[\s.-]?\(?\d{1,4}\)?[\s.-]?\d{1,4}[\s.-]?\d{1,9}\b/g,
+  // Phone: requires at least one separator between digit groups to avoid matching years/plain numbers
+  /(?:\+\d{1,3}[\s.-])?\(?\d{1,4}\)?[\s.-]\d{1,4}[\s.-]?\d{1,9}\b/g,
 ]
 
 export function redactPII(text: string): string {

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { analyzeTier1, type Tier1Result } from './utils/analyzeTier1'
+import { analyzeTier1, extractTimeline, type Tier1Result } from './utils/analyzeTier1'
 import { redactPII } from './utils/redact'
 
 const loadGeneratePDF = () =>
@@ -93,31 +93,61 @@ function App() {
     if (files.length === 0) return
     setProcessing(true)
     setResult(null)
+    setAnalysis(null)
 
-    const rawTexts = await Promise.all(files.map((f) => f.file.text()))
-    const combined = rawTexts.join('\n\n--- Next File ---\n\n')
-    const redacted = redactPII(combined)
-    const analysisResult = analyzeTier1(redacted)
+    try {
+      console.log('[1/5] Reading files...')
+      const rawTexts = await Promise.all(files.map((f) => f.file.text()))
+      const combined = rawTexts.join('\n\n--- Next File ---\n\n')
+      console.log('[1/5] Raw text:', combined)
 
-    console.log('=== Fraud Evidence Pack Analysis ===')
-    console.log('Redacted text:', redacted)
-    console.log('Analysis:', JSON.stringify(analysisResult, null, 2))
+      console.log('[2/5] Extracting timeline from raw text...')
+      const timeline = extractTimeline(combined)
+      console.log('[2/5] Timeline:', JSON.stringify(timeline, null, 2))
 
-    const generatePDF = await loadGeneratePDF()
-    const pdfBytes = await generatePDF(analysisResult, redacted)
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `fraud-evidence-brief-${Date.now()}.pdf`
-    a.click()
-    URL.revokeObjectURL(url)
+      console.log('[3/5] Running redactPII...')
+      const redacted = redactPII(combined)
+      console.log('[3/5] Redacted text:', redacted)
 
-    setAnalysis(analysisResult)
-    setResult(
-      `Processed ${files.length} file(s) — ${analysisResult.matchedTypologies.length} typolog${analysisResult.matchedTypologies.length === 1 ? 'y' : 'ies'} matched, ${analysisResult.extractedFlags.length} warning flag(s), ${analysisResult.timeline.length} date(s) found. PDF downloaded.`,
-    )
-    setProcessing(false)
+      console.log('[4/5] Running analyzeTier1...')
+      const analysis = analyzeTier1(redacted, timeline)
+      console.log('[4/5] Analysis result:', JSON.stringify(analysis, null, 2))
+
+      console.log('[5/6] Generating PDF...')
+      try {
+        const generatePDF = await loadGeneratePDF()
+        const pdfBytes = await generatePDF(analysis, redacted)
+        console.log('[5/6] PDF generated, size:', pdfBytes.length, 'bytes')
+
+        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `fraud-evidence-brief-${Date.now()}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch (pdfErr) {
+        console.error('[5/6] PDF generation failed:', pdfErr)
+        throw pdfErr
+      }
+
+      console.log('[6/6] Done.')
+      setAnalysis(analysis)
+      setResult(
+        `Processed ${files.length} file(s) — ${analysis.matchedTypologies.length} typolog${analysis.matchedTypologies.length === 1 ? 'y' : 'ies'} matched, ${analysis.extractedFlags.length} warning flag(s), ${analysis.timeline.length} date(s) found. PDF downloaded.`,
+      )
+    } catch (err) {
+      console.error('[ERROR]', err)
+      if (err instanceof Error && err.message === 'timeout') {
+        setResult(
+          'Processing took too long and was aborted. Try uploading a smaller file or splitting the text into multiple files.',
+        )
+      } else {
+        setResult('An error occurred during processing. Please try again.')
+      }
+    } finally {
+      setProcessing(false)
+    }
   }, [files])
 
   return (
@@ -278,7 +308,13 @@ function App() {
         {/* ── Results ── */}
         {result && (
           <div className="mt-6 space-y-4">
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                analysis
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-red-200 bg-red-50 text-red-800'
+              }`}
+            >
               {result}
             </div>
 

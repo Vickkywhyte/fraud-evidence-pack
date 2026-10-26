@@ -1,6 +1,10 @@
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib'
 import type { Tier1Result } from './analyzeTier1'
 
+function sanitizeForPDF(text: string): string {
+  return text.replace(/[^\x20-\x7E\n\r\t]/g, '?')
+}
+
 const PAGE_W = 595.28
 const PAGE_H = 841.89
 const MARGIN = 50
@@ -180,7 +184,7 @@ export async function generatePDF(
     color: COLORS.gray,
   })
   cursor.y -= 14
-  cursor.page.drawText('Analysis method: Tier 1 — Rule-based keyword and pattern matching', {
+  cursor.page.drawText('Analysis method: Tier 1 -- Rule-based keyword and pattern matching', {
     x: MARGIN,
     y: cursor.y,
     size: 10,
@@ -266,7 +270,7 @@ export async function generatePDF(
   } else {
     for (const flag of analysis.extractedFlags) {
       cursor = ensureSpace(doc, fonts, cursor, 14, pageNum)
-      cursor.page.drawText(`▸  ${flag}`, {
+      cursor.page.drawText(`- ${flag}`, {
         x: MARGIN + 6,
         y: cursor.y,
         size: 9.5,
@@ -314,7 +318,7 @@ export async function generatePDF(
 
     for (let i = 0; i < analysis.timeline.length; i++) {
       const entry = analysis.timeline[i]
-      const contextLines = wrapText(entry.context, fonts.regular, 8.5, CONTENT_W - 126)
+      const contextLines = wrapText(sanitizeForPDF(entry.context), fonts.regular, 8.5, CONTENT_W - 126)
       const rowHeight = Math.max(14, contextLines.length * 12 + 4)
 
       cursor = ensureSpace(doc, fonts, cursor, rowHeight, pageNum)
@@ -329,7 +333,7 @@ export async function generatePDF(
         })
       }
 
-      cursor.page.drawText(entry.date, {
+      cursor.page.drawText(sanitizeForPDF(entry.date), {
         x: MARGIN + 6,
         y: cursor.y,
         size: 9,
@@ -355,7 +359,7 @@ export async function generatePDF(
   cursor.y -= 6
 
   // --- Appendix: Full Redacted Text ---
-  cursor = drawSectionTitle(doc, fonts, cursor, 'Appendix — Full Redacted Text', pageNum)
+  cursor = drawSectionTitle(doc, fonts, cursor, 'Appendix -- Full Redacted Text', pageNum)
   cursor = drawWrapped(
     doc, fonts, cursor,
     'The complete redacted source text is reproduced below for verification against the original evidence.',
@@ -369,7 +373,7 @@ export async function generatePDF(
       cursor.y -= 8
       continue
     }
-    cursor = drawWrapped(doc, fonts, cursor, line, fonts.regular, 9, COLORS.darkGray, 12, pageNum)
+    cursor = drawWrapped(doc, fonts, cursor, sanitizeForPDF(line), fonts.regular, 9, COLORS.darkGray, 12, pageNum)
   }
 
   return doc.save()
