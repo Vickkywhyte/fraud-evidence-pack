@@ -96,48 +96,30 @@ function App() {
     setAnalysis(null)
 
     try {
-      console.log('[1/5] Reading files...')
       const rawTexts = await Promise.all(files.map((f) => f.file.text()))
       const combined = rawTexts.join('\n\n--- Next File ---\n\n')
-      console.log('[1/5] Raw text:', combined)
 
-      console.log('[2/5] Extracting timeline from raw text...')
       const timeline = extractTimeline(combined)
-      console.log('[2/5] Timeline:', JSON.stringify(timeline, null, 2))
-
-      console.log('[3/5] Running redactPII...')
       const redacted = redactPII(combined)
-      console.log('[3/5] Redacted text:', redacted)
-
-      console.log('[4/5] Running analyzeTier1...')
       const analysis = analyzeTier1(redacted, timeline)
-      console.log('[4/5] Analysis result:', JSON.stringify(analysis, null, 2))
 
-      console.log('[5/6] Generating PDF...')
-      try {
-        const generatePDF = await loadGeneratePDF()
-        const pdfBytes = await generatePDF(analysis, redacted)
-        console.log('[5/6] PDF generated, size:', pdfBytes.length, 'bytes')
+      const generatePDF = await loadGeneratePDF()
+      const pdfBytes = await generatePDF(analysis, redacted)
 
-        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `fraud-evidence-brief-${Date.now()}.pdf`
-        a.click()
-        URL.revokeObjectURL(url)
-      } catch (pdfErr) {
-        console.error('[5/6] PDF generation failed:', pdfErr)
-        throw pdfErr
-      }
+      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `fraud-evidence-brief-${Date.now()}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
 
-      console.log('[6/6] Done.')
       setAnalysis(analysis)
       setResult(
         `Processed ${files.length} file(s) — ${analysis.matchedTypologies.length} typolog${analysis.matchedTypologies.length === 1 ? 'y' : 'ies'} matched, ${analysis.extractedFlags.length} warning flag(s), ${analysis.timeline.length} date(s) found. PDF downloaded.`,
       )
     } catch (err) {
-      console.error('[ERROR]', err)
+      if (import.meta.env.DEV) console.error('[processing error]', err)
       if (err instanceof Error && err.message === 'timeout') {
         setResult(
           'Processing took too long and was aborted. Try uploading a smaller file or splitting the text into multiple files.',
