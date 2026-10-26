@@ -148,4 +148,4 @@ This tool structures evidence for submission. It does **not** provide legal advi
 
 ## License
 
-MIT
+This project is dual-licensed. It is free for non-commercial use under the [AGPL-3.0](LICENSE). For enterprise or commercial use, please see [COMMERCIAL.md](COMMERCIAL.md).
