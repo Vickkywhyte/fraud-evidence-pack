@@ -5,6 +5,12 @@ import { redactPII } from './utils/redact'
 const loadGeneratePDF = () =>
   import('./utils/generatePDF').then((m) => m.generatePDF)
 
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg'])
+
+function isImageFile(file: File): boolean {
+  return IMAGE_TYPES.has(file.type)
+}
+
 interface UploadedFile {
   name: string
   size: number
@@ -28,7 +34,7 @@ const STEPS = [
       </svg>
     ),
     title: 'Upload',
-    description: 'Drop your text evidence files — chat logs, emails, letters.',
+    description: 'Drop text files or screenshots — chat logs, emails, images.',
   },
   {
     icon: (
@@ -56,6 +62,7 @@ function App() {
   const [processing, setProcessing] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<Tier1Result | null>(null)
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null)
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const newFiles: UploadedFile[] = Array.from(incoming).map((file) => ({
@@ -94,15 +101,42 @@ function App() {
     setProcessing(true)
     setResult(null)
     setAnalysis(null)
+    setProcessingStatus(null)
 
     try {
-      const rawTexts = await Promise.all(files.map((f) => f.file.text()))
-      const combined = rawTexts.join('\n\n--- Next File ---\n\n')
+      const texts: string[] = []
+      const hasImages = files.some((f) => isImageFile(f.file))
+
+      let Tesseract: typeof import('tesseract.js') | null = null
+      if (hasImages) {
+        setProcessingStatus('Loading OCR engine...')
+        Tesseract = await import('tesseract.js')
+      }
+
+      for (const f of files) {
+        if (isImageFile(f.file)) {
+          setProcessingStatus(`Reading image (OCR): ${f.name}...`)
+          const result = await Tesseract!.recognize(f.file, 'eng', {
+            logger: (m) => {
+              if (m.status && typeof m.progress === 'number') {
+                setProcessingStatus(`OCR: ${m.status} (${Math.round(m.progress * 100)}%)`)
+              }
+            },
+          })
+          texts.push(result.data.text)
+        } else {
+          texts.push(await f.file.text())
+        }
+      }
+
+      setProcessingStatus('Analysing evidence...')
+      const combined = texts.join('\n\n--- Next File ---\n\n')
 
       const timeline = extractTimeline(combined)
       const redacted = redactPII(combined)
       const analysis = analyzeTier1(redacted, timeline)
 
+      setProcessingStatus('Generating PDF...')
       const generatePDF = await loadGeneratePDF()
       const pdfBytes = await generatePDF(analysis, redacted)
 
@@ -119,16 +153,18 @@ function App() {
         `Processed ${files.length} file(s) — ${analysis.matchedTypologies.length} typolog${analysis.matchedTypologies.length === 1 ? 'y' : 'ies'} matched, ${analysis.extractedFlags.length} warning flag(s), ${analysis.timeline.length} date(s) found. PDF downloaded.`,
       )
     } catch (err) {
-      if (import.meta.env.DEV) console.error('[processing error]', err)
+      console.error('OCR Error:', err)
       if (err instanceof Error && err.message === 'timeout') {
         setResult(
           'Processing took too long and was aborted. Try uploading a smaller file or splitting the text into multiple files.',
         )
       } else {
-        setResult('An error occurred during processing. Please try again.')
+        const msg = err instanceof Error ? err.message : String(err)
+        setResult(`Error: ${msg}`)
       }
     } finally {
       setProcessing(false)
+      setProcessingStatus(null)
     }
   }, [files])
 
@@ -223,12 +259,12 @@ function App() {
             Drag &amp; drop files here, or click to browse
           </span>
           <span className="mt-1 text-xs text-slate-400">
-            .txt files — chat logs, emails, letters, statements
+            .txt, .png, .jpg — chat logs, emails, screenshots
           </span>
           <input
             type="file"
             multiple
-            accept=".txt,text/plain"
+            accept=".txt,text/plain,.png,.jpg,.jpeg,image/png,image/jpeg"
             className="hidden"
             onChange={handleFileInput}
           />
@@ -280,7 +316,7 @@ function App() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z" />
               </svg>
-              Processing...
+              {processingStatus || 'Processing...'}
             </>
           ) : (
             'Process Evidence Pack'
