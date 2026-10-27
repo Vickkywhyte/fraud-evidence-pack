@@ -11,6 +11,34 @@ function isImageFile(file: File): boolean {
   return IMAGE_TYPES.has(file.type)
 }
 
+const ACCEPTED_EXTENSIONS = new Set(['.txt', '.png', '.jpg', '.jpeg'])
+
+function isAcceptedFile(file: File): boolean {
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+  return ACCEPTED_EXTENSIONS.has(ext)
+}
+
+async function readEntriesRecursive(entry: FileSystemEntry): Promise<File[]> {
+  if (entry.isFile) {
+    const file = await new Promise<File>((resolve, reject) => {
+      (entry as FileSystemFileEntry).file(resolve, reject)
+    })
+    return isAcceptedFile(file) ? [file] : []
+  }
+  const dirReader = (entry as FileSystemDirectoryEntry).createReader()
+  const files: File[] = []
+  let batch: FileSystemEntry[]
+  do {
+    batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+      dirReader.readEntries(resolve, reject)
+    })
+    for (const child of batch) {
+      files.push(...(await readEntriesRecursive(child)))
+    }
+  } while (batch.length > 0)
+  return files
+}
+
 interface UploadedFile {
   name: string
   size: number
@@ -76,10 +104,23 @@ function App() {
   }, [])
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    async (e: React.DragEvent) => {
       e.preventDefault()
       setDragOver(false)
-      if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files)
+      const items = Array.from(e.dataTransfer.items)
+      const entries = items
+        .map((item) => item.webkitGetAsEntry?.())
+        .filter((entry): entry is FileSystemEntry => entry != null)
+      const hasDir = entries.some((entry) => entry.isDirectory)
+      if (hasDir) {
+        const allFiles: File[] = []
+        for (const entry of entries) {
+          allFiles.push(...(await readEntriesRecursive(entry)))
+        }
+        if (allFiles.length) addFiles(allFiles)
+      } else if (e.dataTransfer.files.length) {
+        addFiles(e.dataTransfer.files)
+      }
     },
     [addFiles],
   )
@@ -123,14 +164,15 @@ function App() {
               }
             },
           })
-          texts.push(result.data.text)
+          texts.push(`--- Source: ${f.name} ---\n${result.data.text}`)
         } else {
-          texts.push(await f.file.text())
+          const text = await f.file.text()
+          texts.push(`--- Source: ${f.name} ---\n${text}`)
         }
       }
 
       setProcessingStatus('Analysing evidence...')
-      const combined = texts.join('\n\n--- Next File ---\n\n')
+      const combined = texts.join('\n\n')
 
       const timeline = extractTimeline(combined)
       const redacted = redactPII(combined)
@@ -256,7 +298,7 @@ function App() {
             />
           </svg>
           <span className="text-sm font-medium text-slate-600">
-            Drag &amp; drop files here, or click to browse
+            Drag &amp; drop files or a folder, or click to browse
           </span>
           <span className="mt-1 text-xs text-slate-400">
             .txt, .png, .jpg — chat logs, emails, screenshots

@@ -5,6 +5,8 @@ function sanitizeForPDF(text: string): string {
   return text.replace(/[^\x20-\x7E\n\r\t]/g, '?')
 }
 
+const SOURCE_SEPARATOR = /^--- Source: (.+) ---$/
+
 const PAGE_W = 595.28
 const PAGE_H = 841.89
 const MARGIN = 50
@@ -371,6 +373,27 @@ export async function generatePDF(
   for (const line of textLines) {
     if (line.trim() === '') {
       cursor.y -= 8
+      continue
+    }
+    const sourceMatch = line.match(SOURCE_SEPARATOR)
+    if (sourceMatch) {
+      cursor = ensureSpace(doc, fonts, cursor, 30, pageNum)
+      cursor.y -= 6
+      cursor.page.drawRectangle({
+        x: MARGIN,
+        y: cursor.y - 2,
+        width: CONTENT_W,
+        height: 16,
+        color: COLORS.bgLight,
+      })
+      cursor.page.drawText(sanitizeForPDF(sourceMatch[1]), {
+        x: MARGIN + 6,
+        y: cursor.y + 2,
+        size: 9,
+        font: fonts.bold,
+        color: COLORS.accent,
+      })
+      cursor.y -= 18
       continue
     }
     cursor = drawWrapped(doc, fonts, cursor, sanitizeForPDF(line), fonts.regular, 9, COLORS.darkGray, 12, pageNum)
